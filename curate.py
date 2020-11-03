@@ -1,6 +1,6 @@
 import os
 from logger import Logger, Levels
-from discord import Client, DMChannel, TextChannel, Guild, Message, MessageType, utils, Intents, Embed
+from discord import Client, DMChannel, TextChannel, Guild, Message, MessageType, utils, Intents, Embed, Activity
 from discord.errors import InvalidData, HTTPException, NotFound, Forbidden
 import pickle
 
@@ -34,6 +34,7 @@ class Curator(Client):
         except (EOFError, FileNotFoundError):  # todo more possible exceptions
             l.warning(f'Recreating config')
             self.guild_config = {}
+
 
     def auth(self, guild, user):
         auth = self.config_get(guild.id, 'control')
@@ -286,24 +287,34 @@ class Curator(Client):
             if message.channel.id == route[0]:
                 # todo: more route configurations for media and stuffs
                 l.info(f'Route hit for {message.guild.name}, from channel {message.channel.name}')
-                # todo: try doing attachments as embeds, fake spoiler with fake thumbnail
                 if message.attachments.__len__() == 0 and message.embeds.__len__() == 0:
                     l.debug(f'No data to transfer, closing')
                     return
                 # send into target
-                embed = None
-                if message.embeds.__len__() > 0:
-                    embed = message.embeds[0]
+                embed = Embed().set_author(name=self.config_get(message.guild.id, 'content').format(message.author.name), icon_url=message.author.avatar_url)
+                embed.title = message.jump_url
                 attach = None
                 if message.attachments.__len__() > 0:
-                    attach = await message.attachments[0].to_file()  # todo rework fix and such
+                    # spoiler if spoilerd
+                    if message.attachments[0].is_spoiler():
+                        attach = await message.attachments[0].to_file()
+                    else:
+                        embed = embed.set_image(url=message.attachments[0].url)
+                elif message.embeds.__len__() > 0:
+                    embed = embed.set_image(url=message.embeds[0].url)
+                # thumbnail up if none exist
+                if isinstance(embed.image.url, str):
+                    replace = embed.image.url
+                else:
+                    replace = ''
+                embed.set_footer(text=message.content.replace(replace, ''))
                 l.info(f'Reposting in {message.guild} to {route[1]}')
                 try:
                     ch = await self.fetch_channel(route[1])
-                    embed = Embed().set_image(url=embed.image.url).set_thumbnail(url=embed.thumbnail.url).set_author(name='Sex Robot', icon_url=message.author.avatar_url).set_footer(text='DEVELOPERS DEVELOPERS DEVELOPERS DEVELOPERS DEVELOPERS DEVELOPERS DEVELOPERS DEVELOPERS DEVELOPERS DEVELOPERS')
-
-                    await ch.send(content=self.config_get(message.guild.id, 'content').format(message.author.mention), embed=embed, file=attach)
-                except (Forbidden, HTTPException, NotFound, InvalidData):
+                    await ch.send(embed=embed, file=attach)
+                except InvalidData:
+                    l.error(f'Improper route (can\'t send) in {message.guild}, not deleting, check code (invalid data)')
+                except (Forbidden, HTTPException, NotFound):
                     l.error(f'Improper route (can\'t send) in {message.guild}, deleting')
                     self.rem_route(message.guild.id, route[0], route[1])
 
