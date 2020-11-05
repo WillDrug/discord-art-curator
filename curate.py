@@ -10,6 +10,7 @@ l = Logger('Curator Core', Levels.DEBUG)
 # todo: argparse, configurable run
 TOKEN = os.environ.get('ART_CURATOR_TOKEN')
 
+
 if TOKEN is None:
     l.fatal('Token was not provided. Use environment variable ART_CURATOR_TOKEN')
 
@@ -315,19 +316,29 @@ class Curator(Client):
                 return
             elif cmd == 'control':
                 # 'I think we should add <@86890631690977280> to the <@&134362454976102401> role.'
-                if content.__len__() != 1:
+                if content.__len__() > 1:
                     await self.error(f'Set control points one by one please', channel=message.channel)
                     return
-                content = content[0][3:-1]
+                if content.__len__() == 1:
+                    content = content[0][3:-1]
+                else:
+                    content = None
                 try:
-                    await self.add_control(message.guild.id, int(content))
-                    l.info(f'CONTROL {content} auth switch for {message.guild}')
+                    if content is not None:
+                        await self.add_control(message.guild.id, int(content))
+                        l.info(f'CONTROL {content} auth switch for {message.guild}')
                     authlist = await self.config_get(message.guild.id, 'control')
                     roles = await message.guild.fetch_roles()
                     roles = [q.id for q in roles]
                     mentions = [f'<@&{q}>' if q in roles else f'<@{q}>' for q in authlist]
-                    await self.notif(f'Auth list have been changed by {message.author.mention}, '
-                                     f'now is:\n{", ".join(mentions)}', message.guild)
+                    if mentions.__len__() == 0:
+                        mentions.append('**Careful**, control list is empty: Anyone can do commands!')
+                    if content is not None:
+                        await self.notif(f'Auth list have been changed by {message.author.mention}, '
+                                         f'now is:\n{", ".join(mentions)}', message.guild)
+                    else:
+                        await self.answer(f'Auth list is:\n'
+                                         f'{", ".join(mentions)}', message.channel)
                 except ValueError:
                     l.error(f'Someone is being cheeky in {message.guild}')
                 return
